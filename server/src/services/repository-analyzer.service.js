@@ -14,79 +14,117 @@ const IGNORED_DIRECTORIES = new Set([
     ".venv"
 ]);
 
+const LANGUAGE_MAP = {
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".py": "Python",
+    ".java": "Java",
+    ".cpp": "C++",
+    ".c": "C",
+    ".go": "Go",
+    ".rs": "Rust",
+    ".html": "HTML",
+    ".css": "CSS",
+    ".scss": "SCSS",
+    ".sql": "SQL"
+};
+
 const IMPORTANT_FILES = new Set([
     "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
     "requirements.txt",
     "pyproject.toml",
-    "pom.xml",
-    "build.gradle",
     "Dockerfile",
     "docker-compose.yml",
     "README.md",
     ".env.example"
 ]);
 
-async function getRepositoryFiles(directory, currentPath = directory) {
+
+/**
+ * Recursively scans a repository.
+ */
+async function scanDirectory(
+    repositoryPath,
+    currentPath = repositoryPath
+) {
     const entries = await fs.readdir(currentPath, {
         withFileTypes: true
     });
 
     const files = [];
+    const directories = [];
 
     for (const entry of entries) {
-        const fullPath = path.join(currentPath, entry.name);
+        const fullPath = path.join(
+            currentPath,
+            entry.name
+        );
 
-        if (
-            entry.isDirectory() &&
-            IGNORED_DIRECTORIES.has(entry.name)
-        ) {
+        if (entry.isDirectory()) {
+
+            if (
+                IGNORED_DIRECTORIES.has(
+                    entry.name
+                )
+            ) {
+                continue;
+            }
+
+            const relativeDirectory =
+                path.relative(
+                    repositoryPath,
+                    fullPath
+                );
+
+            directories.push(relativeDirectory);
+
+            const nested =
+                await scanDirectory(
+                    repositoryPath,
+                    fullPath
+                );
+
+            files.push(...nested.files);
+            directories.push(...nested.directories);
+
             continue;
         }
 
-        if (entry.isDirectory()) {
-            const nestedFiles = await getRepositoryFiles(
-                directory,
+        const relativeFile =
+            path.relative(
+                repositoryPath,
                 fullPath
             );
 
-            files.push(...nestedFiles);
-            continue;
-        }
-
-        const relativePath = path.relative(
-            directory,
-            fullPath
-        );
-
-        files.push(relativePath);
+        files.push(relativeFile);
     }
 
-    return files;
+    return {
+        files,
+        directories
+    };
 }
 
+
+/**
+ * Detect programming languages.
+ */
 function detectLanguages(files) {
+
     const languages = {};
 
-    const extensions = {
-        ".js": "JavaScript",
-        ".jsx": "JavaScript",
-        ".ts": "TypeScript",
-        ".tsx": "TypeScript",
-        ".py": "Python",
-        ".java": "Java",
-        ".cpp": "C++",
-        ".c": "C",
-        ".go": "Go",
-        ".rs": "Rust",
-        ".html": "HTML",
-        ".css": "CSS",
-        ".scss": "SCSS"
-    };
-
     for (const file of files) {
-        const extension = path.extname(file).toLowerCase();
 
-        const language = extensions[extension];
+        const extension =
+            path.extname(file).toLowerCase();
+
+        const language =
+            LANGUAGE_MAP[extension];
 
         if (!language) {
             continue;
@@ -99,93 +137,155 @@ function detectLanguages(files) {
     return languages;
 }
 
+
+/**
+ * Find important project files.
+ */
 function detectImportantFiles(files) {
+
     return files.filter(file => {
-        const filename = path.basename(file);
+
+        const filename =
+            path.basename(file);
 
         return IMPORTANT_FILES.has(filename);
     });
 }
 
-async function detectProjectInfo(repositoryPath, files) {
-    const result = {
-        frameworks: [],
-        packageManagers: [],
-        dependencies: {}
-    };
 
-    const packageJsonPath = path.join(
-        repositoryPath,
-        "package.json"
-    );
+/**
+ * Analyze package.json.
+ */
+async function analyzeNodeProject(
+    repositoryPath
+) {
+
+    const packageJsonPath =
+        path.join(
+            repositoryPath,
+            "package.json"
+        );
 
     try {
-        const packageJsonContent =
-            await fs.readFile(packageJsonPath, "utf-8");
+
+        const content =
+            await fs.readFile(
+                packageJsonPath,
+                "utf-8"
+            );
 
         const packageJson =
-            JSON.parse(packageJsonContent);
-
-        result.packageManagers.push("npm");
+            JSON.parse(content);
 
         const dependencies = {
             ...(packageJson.dependencies || {}),
             ...(packageJson.devDependencies || {})
         };
 
-        result.dependencies = dependencies;
+        const frameworks = [];
 
         if (
             dependencies.react ||
             dependencies["react-dom"]
         ) {
-            result.frameworks.push("React");
+            frameworks.push("React");
         }
 
         if (dependencies.express) {
-            result.frameworks.push("Express");
+            frameworks.push("Express");
         }
 
         if (dependencies.next) {
-            result.frameworks.push("Next.js");
+            frameworks.push("Next.js");
         }
 
         if (dependencies.vue) {
-            result.frameworks.push("Vue");
+            frameworks.push("Vue");
         }
-    } catch (error) {
-        // package.json doesn't exist or isn't valid JSON
-    }
 
-    return result;
+        if (dependencies["@angular/core"]) {
+            frameworks.push("Angular");
+        }
+
+        return {
+            packageManager: "npm",
+            frameworks,
+            dependencies: Object.keys(
+                dependencies
+            )
+        };
+
+    } catch {
+        return {
+            packageManager: null,
+            frameworks: [],
+            dependencies: []
+        };
+    }
 }
 
-async function analyzeRepository(repositoryPath) {
-    const files = await getRepositoryFiles(
+
+/**
+ * Main repository analysis function.
+ */
+async function analyzeRepository(
+    repositoryPath
+) {
+
+    console.log(
+        "📂 Scanning repository..."
+    );
+
+    const {
+        files,
+        directories
+    } = await scanDirectory(
         repositoryPath
     );
 
-    const languages = detectLanguages(files);
+    console.log(
+        `📄 Found ${files.length} files`
+    );
+
+    const languages =
+        detectLanguages(files);
 
     const importantFiles =
         detectImportantFiles(files);
 
-    const projectInfo =
-        await detectProjectInfo(
-            repositoryPath,
-            files
+    const nodeAnalysis =
+        await analyzeNodeProject(
+            repositoryPath
         );
 
     return {
+
         totalFiles: files.length,
+
+        totalDirectories:
+            directories.length,
+
         languages,
+
+        frameworks:
+            nodeAnalysis.frameworks,
+
+        packageManagers:
+            nodeAnalysis.packageManager
+                ? [nodeAnalysis.packageManager]
+                : [],
+
         importantFiles,
-        frameworks: projectInfo.frameworks,
-        packageManagers: projectInfo.packageManagers,
-        dependencies: projectInfo.dependencies,
+
+        dependencies:
+            nodeAnalysis.dependencies,
+
+        directories,
+
         files
     };
 }
+
 
 module.exports = {
     analyzeRepository
