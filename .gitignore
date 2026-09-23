@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Python
+**/venv/
+**/.venv/
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+**/.env
+
+# Build files
+dist/
+build/
+.next/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python cache
+.pytest_cache/
+
+# Coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+
+# AI / model files
+*.bin
+*.safetensors
+*.pt
+*.pth
