@@ -6,6 +6,59 @@ const {
     analyzeRepository
 } = require("../services/repository-analyzer.service");
 
+const Repository =
+    require("../models/repository.model");
+
+
+function extractOwner(repoUrl) {
+
+    try {
+
+        const url = new URL(repoUrl);
+
+        const parts =
+            url.pathname
+                .split("/")
+                .filter(Boolean);
+
+        return parts[0] || null;
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+function extractRepositoryName(repoUrl) {
+
+    try {
+
+        const url = new URL(repoUrl);
+
+        const parts =
+            url.pathname
+                .split("/")
+                .filter(Boolean);
+
+        let name = parts[1];
+
+        if (!name) {
+            return null;
+        }
+
+        if (name.endsWith(".git")) {
+            name = name.slice(0, -4);
+        }
+
+        return name;
+
+    } catch {
+
+        return null;
+    }
+}
+
 
 async function analyzeRepositoryController(
     req,
@@ -15,6 +68,7 @@ async function analyzeRepositoryController(
     try {
 
         const { repoUrl } = req.body;
+
 
         if (!repoUrl) {
 
@@ -28,50 +82,134 @@ async function analyzeRepositoryController(
             });
         }
 
-        console.log(
-            "🔗 Repository:",
-            repoUrl
-        );
 
-        // Step 1: Clone
+        // Prevent duplicate repositories
+        const existing =
+            await Repository.findOne({
+                where: {
+                    githubUrl: repoUrl
+                }
+            });
+
+
+        if (existing) {
+
+            return res.status(200).json({
+
+                success: true,
+
+                message:
+                    "Repository already exists",
+
+                repository: existing
+
+            });
+        }
+
+
         console.log(
             "📥 Cloning repository..."
         );
+
 
         const repository =
             await cloneRepository(
                 repoUrl
             );
 
-        // Step 2: Analyze
+
         console.log(
             "🔍 Analyzing repository..."
         );
+
 
         const analysis =
             await analyzeRepository(
                 repository.path
             );
 
+
         console.log(
-            "✅ Repository analysis complete"
+            "💾 Saving repository..."
         );
+
+
+        const savedRepository =
+            await Repository.create({
+
+                name:
+                    repository.name,
+
+                githubUrl:
+                    repoUrl,
+
+                owner:
+                    extractOwner(repoUrl),
+
+                defaultBranch:
+                    "main",
+
+                languages:
+                    analysis.languages,
+
+                frameworks:
+                    analysis.frameworks,
+
+                totalFiles:
+                    analysis.totalFiles,
+
+                totalDirectories:
+                    analysis.totalDirectories,
+
+                status:
+                    "ANALYZED"
+
+            });
+
+
+        console.log(
+            "✅ Repository saved:",
+            savedRepository.id
+        );
+
 
         return res.status(201).json({
 
             success: true,
 
+            message:
+                "Repository analyzed and saved",
+
             repository: {
 
+                id:
+                    savedRepository.id,
+
                 name:
-                    repository.name,
+                    savedRepository.name,
 
-                path:
-                    repository.path
+                githubUrl:
+                    savedRepository.githubUrl,
 
-            },
+                owner:
+                    savedRepository.owner,
 
-            analysis
+                languages:
+                    savedRepository.languages,
+
+                frameworks:
+                    savedRepository.frameworks,
+
+                totalFiles:
+                    savedRepository.totalFiles,
+
+                totalDirectories:
+                    savedRepository.totalDirectories,
+
+                status:
+                    savedRepository.status
+
+            }
 
         });
 
@@ -81,6 +219,7 @@ async function analyzeRepositoryController(
             "❌ Repository analysis failed:",
             error
         );
+
 
         return res.status(500).json({
 
