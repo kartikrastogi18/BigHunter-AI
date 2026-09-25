@@ -78,5 +78,16 @@ const Repository = sequelize.define(
     }
 );
 
+const CodeChunk =
+    require("./code-chunk.model");
+
+Repository.hasMany(CodeChunk, {
+    foreignKey: "repositoryId",
+    onDelete: "CASCADE"
+});
+
+CodeChunk.belongsTo(Repository, {
+    foreignKey: "repositoryId"
+});
 
 module.exports = Repository;

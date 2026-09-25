@@ -6,6 +6,14 @@ const {
     analyzeRepository
 } = require("../services/repository-analyzer.service");
 
+const {
+    indexRepository
+} = require("../services/code-indexer.service");
+
+const {
+    saveCodeChunks
+} = require("../services/code-storage.service");
+
 const Repository =
     require("../models/repository.model");
 
@@ -128,6 +136,19 @@ async function analyzeRepositoryController(
                 repository.path
             );
 
+            console.log(
+                "📚 Indexing source code..."
+            );
+            
+            const chunks =
+                await indexRepository(
+                    repository.path
+                );
+            
+            console.log(
+                `🧩 Generated ${chunks.length} chunks`
+            );
+
 
         console.log(
             "💾 Saving repository..."
@@ -165,6 +186,18 @@ async function analyzeRepositoryController(
                     "ANALYZED"
 
             });
+            console.log(
+                "💾 Saving code chunks..."
+            );
+            
+            await saveCodeChunks(
+                savedRepository.id,
+                chunks
+            );
+            
+            console.log(
+                "✅ Code chunks saved"
+            );
 
 
         console.log(

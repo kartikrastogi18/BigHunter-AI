@@ -8,6 +8,7 @@ const {
 } = require("./config/database");
 
 require("./models/repository.model");
+require("./models/code-chunk.model");
 
 
 const PORT = process.env.PORT || 5000;
