@@ -17,6 +17,8 @@ const {
 const Repository =
     require("../models/repository.model");
 
+const { embedRepository } = require("../services/embedding-pipeline.service");
+
 
 function extractOwner(repoUrl) {
 
@@ -194,7 +196,9 @@ async function analyzeRepositoryController(
                 savedRepository.id,
                 chunks
             );
-            
+            const embeddingResult = await embedRepository(
+                savedRepository.id
+            );
             console.log(
                 "✅ Code chunks saved"
             );
@@ -241,8 +245,10 @@ async function analyzeRepositoryController(
 
                 status:
                     savedRepository.status
-
-            }
+                
+            },
+            embedding:
+                embeddingResult
 
         });
 
