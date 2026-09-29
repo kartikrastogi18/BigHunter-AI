@@ -4,6 +4,8 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 
 const repositoryRoutes = require("./routes/repository.routes");
+const searchRoutes =
+    require("./routes/search.routes");
 
 const app = express();
 
@@ -11,6 +13,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
+app.use(
+    "/api/search",
+    searchRoutes
+);
 
 app.get("/api/health", (req, res) => {
     res.json({
