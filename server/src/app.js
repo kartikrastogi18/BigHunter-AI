@@ -6,6 +6,7 @@ const morgan = require("morgan");
 const repositoryRoutes = require("./routes/repository.routes");
 const searchRoutes =
     require("./routes/search.routes");
+const bugRoutes = require("./routes/bug.routes");
 
 const app = express();
 
@@ -16,6 +17,10 @@ app.use(morgan("dev"));
 app.use(
     "/api/search",
     searchRoutes
+);
+app.use(
+    "/api/bugs",
+    bugRoutes
 );
 
 app.get("/api/health", (req, res) => {

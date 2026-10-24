@@ -11,14 +11,15 @@ Currently under active development.
 - [x] Project architecture
 - [x] Node.js / Express backend
 - [x] GitHub repository cloning
-- [ ] Repository intelligence
-- [ ] PostgreSQL integration
-- [ ] Code indexing
-- [ ] Code RAG
-- [ ] Bug investigation agent
-- [ ] Automated test generation
+- [x] Repository intelligence
+- [x] PostgreSQL integration
+- [x] Code indexing
+- [x] Code RAG
+- [x] Bug investigation agent
+- [x] React Client dashboard
+- [x] Automated test generation
 - [ ] Docker sandbox
-- [ ] AI-generated patches
+- [x] AI-generated patches
 - [ ] Patch verification
 - [ ] GitHub Pull Request automation
 
@@ -44,3 +45,28 @@ Currently under active development.
                                    |
                                    v
                              Docker Sandbox
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Python AI Service (Port 8000)
+```powershell
+cd ai-service
+# Make sure .env has GEMINI_API_KEY
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Node.js Backend API (Port 5000)
+```powershell
+cd server
+npm run dev
+```
+
+### 3. React Client Dashboard (Port 5173)
+```powershell
+cd client
+npm run dev
+```
+Open `http://localhost:5173` in your browser.

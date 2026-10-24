@@ -1,5 +1,7 @@
-const AI_SERVICE_URL =
-    process.env.AI_SERVICE_URL || "http://localhost:8000";
+let AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+if (AI_SERVICE_URL.includes("localhost")) {
+    AI_SERVICE_URL = AI_SERVICE_URL.replace("localhost", "127.0.0.1");
+}
 
 
 async function generateEmbedding(text) {
