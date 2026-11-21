@@ -36,7 +36,9 @@ import {
   Activity,
   History,
   BrainCircuit,
-  RotateCcw
+  RotateCcw,
+  Sun,
+  Moon
 } from 'lucide-react';
 import './App.css';
 
@@ -44,6 +46,19 @@ const NODE_API = import.meta.env.VITE_NODE_API_URL || 'http://127.0.0.1:5000';
 const PYTHON_API = import.meta.env.VITE_PYTHON_API_URL || 'http://127.0.0.1:8000';
 
 export default function App() {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('bh_theme') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('bh_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
   const [activeTab, setActiveTab] = useState('investigate'); // 'repo', 'investigate', 'patch', 'search'
 
   // Service Health Statuses
@@ -94,6 +109,7 @@ console.log(calculateDiscount(100, 150));`
   const [isHunting, setIsHunting] = useState(false);
   const [bugReport, setBugReport] = useState(null);
   const [investigationError, setInvestigationError] = useState('');
+  const [analysisViewMode, setAnalysisViewMode] = useState('cards'); // 'cards' | 'raw'
 
   // Tab 3: Patch Generator State
   const [patchCode, setPatchCode] = useState('');
@@ -225,6 +241,123 @@ console.log(calculateDiscount(100, 150));`
       return trimmed.replace(/^```[a-zA-Z0-9_\-\+]*\r?\n/, '').replace(/```$/, '').trim();
     }
     return trimmed;
+  };
+
+  // Parse Gemini Analysis text into structured sections for clean developer rendering
+  const parseGeminiAnalysis = (text) => {
+    if (!text || typeof text !== 'string') return { title: 'Bug Investigation Analysis', sections: [] };
+
+    const rawSections = text.split(/\n(?=###?\s+)/);
+    const titleMatch = text.match(/^#\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1].replace(/[#*]/g, '').trim() : 'Bug Analysis & Diagnosis';
+
+    const sections = [];
+
+    for (const raw of rawSections) {
+      const trimmed = raw.trim();
+      if (!trimmed || (trimmed.startsWith('# ') && !trimmed.includes('###'))) continue;
+
+      const lines = trimmed.split('\n');
+      const headerLine = lines[0].replace(/^###?\s+/, '').replace(/\*\*/g, '').trim();
+      const body = lines.slice(1).join('\n').trim();
+
+      const lower = headerLine.toLowerCase();
+      let type = 'general';
+      let color = '#10b981';
+      let badge = 'INFO';
+
+      if (lower.includes('identification') || lower.includes('bug') || lower.includes('issue')) {
+        type = 'identification';
+        color = '#f43f5e';
+        badge = '1. BUG IDENTIFIED';
+      } else if (lower.includes('root cause') || lower.includes('cause') || lower.includes('why')) {
+        type = 'root_cause';
+        color = '#f59e0b';
+        badge = '2. ROOT CAUSE';
+      } else if (lower.includes('reproduction') || lower.includes('scenario') || lower.includes('test')) {
+        type = 'test';
+        color = '#14b8a6';
+        badge = '3. REPRODUCTION TEST';
+      } else if (lower.includes('fix') || lower.includes('solution') || lower.includes('recommendation') || lower.includes('patch')) {
+        type = 'fix';
+        color = '#10b981';
+        badge = '4. RECOMMENDED FIX';
+      }
+
+      // Extract code block inside this section if present
+      const codeMatch = body.match(/```(?:[a-zA-Z0-9_\-\+]+)?\r?\n([\s\S]*?)```/);
+      const codeSnippet = codeMatch ? codeMatch[1].trim() : null;
+      const textWithoutCode = codeSnippet ? body.replace(/```(?:[a-zA-Z0-9_\-\+]+)?\r?\n[\s\S]*?```/g, '').trim() : body;
+
+      sections.push({
+        header: headerLine,
+        type,
+        color,
+        badge,
+        bodyText: textWithoutCode,
+        codeSnippet
+      });
+    }
+
+    return { title, sections };
+  };
+
+  // Helper to render formatted inline markdown (bold & inline code)
+  const renderInlineFormatting = (str) => {
+    if (!str) return '';
+    const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <code key={i} style={{
+            background: 'var(--bg-code)',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.85em',
+            color: 'var(--accent-primary)',
+            border: '1px solid var(--border-subtle)'
+          }}>
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Helper to render formatted markdown paragraphs and lists
+  const renderFormattedMarkdown = (text) => {
+    if (!text) return null;
+    const paragraphs = text.split(/\n\s*\n/);
+    return paragraphs.map((para, pIdx) => {
+      const lines = para.trim().split('\n');
+      const isList = lines.every(l => l.trim().startsWith('* ') || l.trim().startsWith('- ') || /^\d+\.\s+/.test(l.trim()));
+
+      if (isList) {
+        return (
+          <ul key={pIdx} style={{ paddingLeft: '22px', margin: '8px 0' }}>
+            {lines.map((l, lIdx) => {
+              const cleanLine = l.replace(/^[\*\-]\s+/, '').replace(/^\d+\.\s+/, '');
+              return (
+                <li key={lIdx} style={{ marginBottom: '5px' }}>
+                  {renderInlineFormatting(cleanLine)}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      }
+
+      return (
+        <p key={pIdx} style={{ margin: '8px 0', lineHeight: '1.65' }}>
+          {renderInlineFormatting(para)}
+        </p>
+      );
+    });
   };
 
   // Fetch all indexed repositories from backend
@@ -507,6 +640,10 @@ console.log(calculateDiscount(100, 150));`
     }
     if (!prFileContent) {
       setPrError('Patched file content cannot be empty.');
+      return;
+    }
+    if (includeTest && (!prTestFilePath?.trim() || !prTestContent?.trim())) {
+      setPrError('Please provide both Test File Path and Test Code, or uncheck "Include Executable Reproduction Unit Test in PR".');
       return;
     }
 
@@ -847,13 +984,23 @@ console.log(calculateDiscount(100, 150));`
             AI Service (8000): {pythonHealth.online ? 'Online' : 'Offline'}
           </div>
           <div className="status-pill">
-            <Sparkles size={14} color="#818cf8" />
+            <Sparkles size={14} color="var(--accent-primary)" />
             Gemini Flash: {pythonHealth.geminiConfigured ? 'Connected' : 'Missing Key'}
           </div>
           <div className="status-pill">
             <BrainCircuit size={14} color={pythonHealth.defectModelLoaded ? '#34d399' : '#fbbf24'} />
             PyTorch Bi-GRU: {pythonHealth.defectModelLoaded ? 'Ready' : 'Not Loaded'}
           </div>
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun size={14} color="#f59e0b" /> : <Moon size={14} color="var(--accent-primary)" />}
+            <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
           <button className="btn-secondary" onClick={checkHealth} title="Refresh connection status" style={{ padding: '6px 10px' }}>
             <RefreshCw size={13} className={nodeHealth.checking ? 'animate-spin' : ''} />
           </button>
@@ -943,8 +1090,9 @@ console.log(calculateDiscount(100, 150));`
                   style={{
                     flex: 1,
                     justifyContent: 'center',
-                    background: investigationMode === 'snippet' ? 'rgba(99, 102, 241, 0.2)' : undefined,
-                    borderColor: investigationMode === 'snippet' ? 'var(--accent-indigo)' : undefined
+                    background: investigationMode === 'snippet' ? 'var(--accent-primary-subtle)' : undefined,
+                    borderColor: investigationMode === 'snippet' ? 'var(--accent-primary)' : undefined,
+                    color: investigationMode === 'snippet' ? 'var(--accent-primary)' : undefined
                   }}
                   onClick={() => setInvestigationMode('snippet')}
                 >
@@ -956,8 +1104,9 @@ console.log(calculateDiscount(100, 150));`
                   style={{
                     flex: 1,
                     justifyContent: 'center',
-                    background: investigationMode === 'repo' ? 'rgba(99, 102, 241, 0.2)' : undefined,
-                    borderColor: investigationMode === 'repo' ? 'var(--accent-indigo)' : undefined
+                    background: investigationMode === 'repo' ? 'var(--accent-primary-subtle)' : undefined,
+                    borderColor: investigationMode === 'repo' ? 'var(--accent-primary)' : undefined,
+                    color: investigationMode === 'repo' ? 'var(--accent-primary)' : undefined
                   }}
                   onClick={() => setInvestigationMode('repo')}
                 >
@@ -1117,7 +1266,7 @@ console.log(calculateDiscount(100, 150));`
                     disabled={isScanningDefect || (investigationMode === 'snippet' && !codeSnippet.trim()) || (investigationMode === 'repo' && !bugReport?.codeContext)}
                     onClick={() => handleScanDefect(investigationMode === 'repo' ? bugReport?.codeContext : codeSnippet)}
                     title="Run local CodeXGLUE PyTorch Bi-GRU defect classifier"
-                    style={{ flex: 1, minWidth: '170px', justifyContent: 'center', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+                    style={{ flex: 1, minWidth: '170px', justifyContent: 'center', borderColor: 'var(--accent-primary-border)' }}
                   >
                     {isScanningDefect ? (
                       <>
@@ -1126,7 +1275,7 @@ console.log(calculateDiscount(100, 150));`
                       </>
                     ) : (
                       <>
-                        <BrainCircuit size={16} color="#38bdf8" />
+                        <BrainCircuit size={16} color="var(--accent-primary)" />
                         ML Defect Scan
                       </>
                     )}
@@ -1147,7 +1296,7 @@ console.log(calculateDiscount(100, 150));`
               <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div className="section-title">
-                    <Cpu size={20} color="#38bdf8" />
+                    <Cpu size={20} color="var(--accent-primary)" />
                     Investigation Report
                   </div>
                   <div className="section-desc">
@@ -1171,7 +1320,7 @@ console.log(calculateDiscount(100, 150));`
                 <div className="defect-scan-card animate-fade-in" style={{ marginBottom: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                      <BrainCircuit size={18} color="#38bdf8" />
+                      <BrainCircuit size={18} color="var(--accent-primary)" />
                       <span>PyTorch Bi-GRU Defect Risk Score</span>
                     </div>
                     <span className={`stage-pill ${
@@ -1192,10 +1341,10 @@ console.log(calculateDiscount(100, 150));`
                         width: `${Math.min(100, Math.max(4, defectScan.defect_percentage || 0))}%`,
                         background:
                           defectScan.risk_level === 'HIGH'
-                            ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
+                            ? '#f43f5e'
                             : defectScan.risk_level === 'MEDIUM'
-                            ? 'linear-gradient(90deg, #38bdf8, #f59e0b)'
-                            : 'linear-gradient(90deg, #10b981, #38bdf8)'
+                            ? '#f59e0b'
+                            : '#10b981'
                       }}
                     />
                   </div>
@@ -1252,7 +1401,7 @@ console.log(calculateDiscount(100, 150));`
                             key={idx}
                             style={{
                               padding: '8px 12px',
-                              background: 'rgba(15, 23, 42, 0.8)',
+                              background: 'var(--bg-secondary)',
                               border: '1px solid var(--border-subtle)',
                               borderRadius: 'var(--radius-sm)',
                               fontSize: '0.8rem',
@@ -1261,7 +1410,7 @@ console.log(calculateDiscount(100, 150));`
                               alignItems: 'center'
                             }}
                           >
-                            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
                               {file.filePath} (L:{file.startLine}-{file.endLine})
                             </span>
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -1273,20 +1422,266 @@ console.log(calculateDiscount(100, 150));`
                     </div>
                   )}
 
-                  <div className="code-container">
-                    <div className="code-header">
-                      <span>🤖 Gemini Analysis & Test Generation</span>
-                      <button
-                        className="btn-secondary"
-                        style={{ padding: '3px 8px', fontSize: '0.72rem' }}
-                        onClick={() => copyToClipboard(bugReport.analysis)}
-                      >
-                        {copiedPatch ? <Check size={12} color="#10b981" /> : <Copy size={12} />} Copy Report
-                      </button>
+                  <div className="analysis-viewer-container" style={{ marginTop: '16px' }}>
+                    {/* View Switcher Header */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '12px 18px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
+                      border: '1px solid var(--border-subtle)',
+                      borderBottom: 'none',
+                      flexWrap: 'wrap',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Sparkles size={18} color="var(--accent-primary)" />
+                        <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                          AI Bug Investigation Report
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', background: 'var(--bg-input)', padding: '3px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                          <button
+                            type="button"
+                            onClick={() => setAnalysisViewMode('cards')}
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '0.74rem',
+                              borderRadius: '4px',
+                              border: 'none',
+                              background: analysisViewMode === 'cards' ? 'var(--accent-primary)' : 'transparent',
+                              color: analysisViewMode === 'cards' ? '#fff' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontWeight: 600
+                            }}
+                          >
+                            <span>Cards View</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAnalysisViewMode('raw')}
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '0.74rem',
+                              borderRadius: '4px',
+                              border: 'none',
+                              background: analysisViewMode === 'raw' ? 'var(--accent-primary)' : 'transparent',
+                              color: analysisViewMode === 'raw' ? '#fff' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontWeight: 600
+                            }}
+                          >
+                            <span>Raw Report</span>
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+                          onClick={() => copyToClipboard(bugReport.analysis)}
+                          title="Copy Full Report"
+                        >
+                          {copiedPatch ? <Check size={12} color="#10b981" /> : <Copy size={12} />} Copy
+                        </button>
+                      </div>
                     </div>
-                    <div className="code-content markdown-report">
-                      {bugReport.analysis}
-                    </div>
+
+                    {/* Clean Solid Cards View */}
+                    {analysisViewMode === 'cards' ? (
+                      <div style={{
+                        padding: '20px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: '0 0 var(--radius-md) var(--radius-md)'
+                      }}>
+                        {/* Quick Glance Key Points */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '12px',
+                          marginBottom: '20px'
+                        }}>
+                          <div style={{ padding: '12px', background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.25)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f43f5e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 1: Bug Identified</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff', marginTop: '3px' }}>Issue diagnosed by AI</div>
+                          </div>
+                          <div style={{ padding: '12px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 2: Root Cause</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff', marginTop: '3px' }}>Faulty source lines pinpointed</div>
+                          </div>
+                          <div style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 3: Solution Ready</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff', marginTop: '3px' }}>Fix strategy proposed</div>
+                          </div>
+                          <div style={{ padding: '12px', background: 'var(--accent-primary-subtle)', border: '1px solid var(--accent-primary-border)', borderRadius: 'var(--radius-sm)' }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 4: Test Plan</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff', marginTop: '3px' }}>Reproduction unit test suite</div>
+                          </div>
+                        </div>
+
+                        {/* Detailed Structured Cards */}
+                        {(() => {
+                          const parsed = parseGeminiAnalysis(bugReport.analysis);
+                          if (!parsed.sections || parsed.sections.length === 0) {
+                            return (
+                              <div className="code-content markdown-report">
+                                {bugReport.analysis}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                              {parsed.sections.map((sec, idx) => (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-subtle)',
+                                    borderLeft: `4px solid ${sec.color}`,
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: '18px 20px',
+                                    boxShadow: 'var(--shadow-sm)'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <span style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 800,
+                                        padding: '3px 8px',
+                                        borderRadius: '4px',
+                                        background: `${sec.color}22`,
+                                        color: sec.color,
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        {sec.badge}
+                                      </span>
+                                      <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                        {sec.header}
+                                      </h4>
+                                    </div>
+
+                                    {sec.codeSnippet && (
+                                      <button
+                                        type="button"
+                                        className="btn-secondary"
+                                        style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                                        onClick={() => copyToClipboard(sec.codeSnippet)}
+                                      >
+                                        <Copy size={11} /> Copy Code
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Formatted Text Content */}
+                                  <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: '1.65' }}>
+                                    {renderFormattedMarkdown(sec.bodyText)}
+                                  </div>
+
+                                  {/* Code Block if any */}
+                                  {sec.codeSnippet && (
+                                    <div style={{ marginTop: '12px', background: 'var(--bg-code)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+                                      <div style={{ padding: '6px 12px', background: 'rgba(0, 0, 0, 0.4)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Code Preview</span>
+                                        <span style={{ fontSize: '0.7rem', color: sec.color }}>Executable Snippet</span>
+                                      </div>
+                                      <pre style={{ margin: 0, padding: '12px', overflowX: 'auto', fontSize: '0.82rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)', lineHeight: '1.5' }}>
+                                        <code>{sec.codeSnippet}</code>
+                                      </pre>
+                                    </div>
+                                  )}
+
+                                  {/* Quick Action Button for Fix or Test */}
+                                  {sec.type === 'fix' && (
+                                    <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
+                                      <button
+                                        type="button"
+                                        className="btn-primary"
+                                        style={{ fontSize: '0.78rem', padding: '6px 14px', background: '#10b981', border: 'none' }}
+                                        onClick={sendToPatchTab}
+                                      >
+                                        <Zap size={13} /> Open in Patch Generator Tab ➔
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {sec.type === 'test' && (
+                                    <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-end' }}>
+                                      <button
+                                        type="button"
+                                        className="btn-primary"
+                                        style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'var(--accent-primary)', border: 'none' }}
+                                        onClick={sendToTestTab}
+                                      >
+                                        <FlaskConical size={13} /> Open in Test Generator Tab ➔
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Beginner Workflow Action Roadmap */}
+                        <div style={{
+                          marginTop: '24px',
+                          padding: '16px 20px',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: 'var(--radius-md)'
+                        }}>
+                          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ArrowRight size={16} color="var(--accent-primary)" />
+                            <span>Recommended Next Actions:</span>
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+                            Investigation complete! Click any button below to proceed to the next automated step:
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                            <button
+                              type="button"
+                              onClick={sendToPatchTab}
+                              className="btn-secondary"
+                              style={{ justifyContent: 'center', padding: '10px', border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.08)' }}
+                            >
+                              <Zap size={14} color="#10b981" />
+                              <span style={{ color: '#10b981', fontWeight: 600, fontSize: '0.82rem' }}>1. Generate Fix Patch ➔</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={sendToTestTab}
+                              className="btn-secondary"
+                              style={{ justifyContent: 'center', padding: '10px', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)' }}
+                            >
+                              <FlaskConical size={14} color="#f59e0b" />
+                              <span style={{ color: '#f59e0b', fontWeight: 600, fontSize: '0.82rem' }}>2. Generate Unit Test ➔</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('pr')}
+                              className="btn-secondary"
+                              style={{ justifyContent: 'center', padding: '10px', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)' }}
+                            >
+                              <GitPullRequest size={14} color="var(--accent-primary)" />
+                              <span style={{ color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.82rem' }}>3. Submit GitHub PR ➔</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Classic Raw Markdown View */
+                      <div className="code-content markdown-report" style={{ border: '1px solid var(--border-subtle)', borderRadius: '0 0 var(--radius-md) var(--radius-md)' }}>
+                        {bugReport.analysis}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1666,7 +2061,7 @@ console.log(calculateDiscount(100, 150));`
                   type="submit"
                   className="btn-primary"
                   disabled={isGeneratingTest}
-                  style={{ width: '100%', background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)' }}
+                  style={{ width: '100%' }}
                 >
                   {isGeneratingTest ? (
                     <>
@@ -1797,7 +2192,7 @@ console.log(calculateDiscount(100, 150));`
           <div className="glass-panel card-padding">
             <div className="section-header">
               <div className="section-title">
-                <GitBranch size={20} color="#06b6d4" />
+                <GitBranch size={20} color="var(--accent-primary)" />
                 GitHub Repository Ingestion & Code Indexing
               </div>
               <div className="section-desc">
@@ -1946,7 +2341,7 @@ console.log(calculateDiscount(100, 150));`
               </div>
 
               {repositories.length === 0 ? (
-                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(15, 23, 42, 0.4)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
                   No repositories indexed yet. Enter a GitHub URL above to clone and index your first repository!
                 </div>
               ) : (
@@ -2220,10 +2615,10 @@ console.log(calculateDiscount(100, 150));`
                 </div>
 
                 {/* GitHub Authentication Box */}
-                <div className="form-group" style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '20px' }}>
+                <div className="form-group" style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Key size={14} color="#818cf8" />
+                      <Key size={14} color="var(--accent-primary)" />
                       GitHub Personal Access Token (PAT)
                     </label>
                     {githubUser && (
@@ -2351,7 +2746,7 @@ console.log(calculateDiscount(100, 150));`
                 </div>
 
                 {/* Reproduction Test Attachment Toggle */}
-                <div style={{ marginTop: '14px', padding: '14px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ marginTop: '14px', padding: '14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}>
                     <input
                       type="checkbox"
@@ -2364,6 +2759,22 @@ console.log(calculateDiscount(100, 150));`
 
                   {includeTest && (
                     <div style={{ marginTop: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Test File Details</span>
+                        {testCode && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => {
+                              if (testFileName) setPrTestFilePath(testFileName);
+                              if (testCode) setPrTestContent(testCode);
+                            }}
+                            style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                          >
+                            ⚡ Auto-Fill Generated Test
+                          </button>
+                        )}
+                      </div>
                       <div className="form-group">
                         <label className="form-label" style={{ fontSize: '0.8rem' }}>Test File Path</label>
                         <input
@@ -2372,6 +2783,7 @@ console.log(calculateDiscount(100, 150));`
                           value={prTestFilePath}
                           onChange={(e) => setPrTestFilePath(e.target.value)}
                           placeholder="e.g. tests/reproduction.test.js or test_bug.py"
+                          required={includeTest}
                         />
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
@@ -2382,6 +2794,7 @@ console.log(calculateDiscount(100, 150));`
                           value={prTestContent}
                           onChange={(e) => setPrTestContent(e.target.value)}
                           placeholder="// Executable test code that reproduces bug and verifies fix..."
+                          required={includeTest}
                         />
                       </div>
                     </div>
@@ -2394,7 +2807,7 @@ console.log(calculateDiscount(100, 150));`
                 <div className="section-header">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                     <div className="section-title">
-                      <Sparkles size={20} color="#818cf8" />
+                      <Sparkles size={20} color="var(--accent-primary)" />
                       Pull Request Summary
                     </div>
                     <button
@@ -2411,7 +2824,7 @@ console.log(calculateDiscount(100, 150));`
                         </>
                       ) : (
                         <>
-                          <Sparkles size={13} color="#818cf8" />
+                          <Sparkles size={13} color="var(--accent-primary)" />
                           Synthesize with AI
                         </>
                       )}
@@ -2457,7 +2870,7 @@ console.log(calculateDiscount(100, 150));`
                   <button
                     type="submit"
                     className="btn-primary"
-                    disabled={isCreatingPr || !prRepoUrl || !prFileContent}
+                    disabled={isCreatingPr || !prRepoUrl || !prFileContent || (includeTest && (!prTestFilePath?.trim() || !prTestContent?.trim()))}
                     style={{ width: '100%', padding: '14px', fontSize: '1rem', marginTop: '12px', justifyContent: 'center' }}
                   >
                     {isCreatingPr ? (
@@ -2490,7 +2903,7 @@ console.log(calculateDiscount(100, 150));`
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
               <div className="section-header" style={{ marginBottom: 0 }}>
                 <div className="section-title">
-                  <History size={20} color="#38bdf8" />
+                  <History size={20} color="var(--accent-primary)" />
                   Bug Investigation & Repair History ({investigationHistory.length})
                 </div>
                 <div className="section-desc">
