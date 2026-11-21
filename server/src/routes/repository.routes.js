@@ -1,14 +1,15 @@
 const express = require("express");
 
 const {
-    analyzeRepository
+    analyzeRepository,
+    getAllRepositories,
+    deleteRepository
 } = require("../controllers/repository.controller");
 
 const router = express.Router();
 
-router.post(
-    "/analyze",
-    analyzeRepository
-);
+router.get("/", getAllRepositories);
+router.post("/analyze", analyzeRepository);
+router.delete("/:id", deleteRepository);
 
 module.exports = router;

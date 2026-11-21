@@ -9,6 +9,7 @@ const {
 
 require("./models/repository.model");
 require("./models/code-chunk.model");
+require("./models/bug-investigation.model");
 
 
 const PORT = process.env.PORT || 5000;

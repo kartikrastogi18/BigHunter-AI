@@ -1,0 +1,20 @@
+{
+  "name": "bughunter-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous AI Bug Investigation, CodeXGLUE ML Defect Detection, Sandbox Verification & Automated GitHub PR Platform",
+  "scripts": {
+    "start": "node scripts/start-all.js",
+    "dev": "node scripts/start-all.js",
+    "train:ml": "python ai-service/training/train_defect_detector.py"
+  },
+  "keywords": [
+    "ai-agent",
+    "rag",
+    "pgvector",
+    "gemini",
+    "pytorch",
+    "automated-debugging"
+  ]
+}
+

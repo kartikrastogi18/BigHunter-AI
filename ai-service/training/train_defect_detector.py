@@ -28,15 +28,17 @@ MAX_LEN = 256
 MAX_VOCAB = 20000
 EMBED_DIM = 64
 HIDDEN_DIM = 64
-BATCH_SIZE = 8
+BATCH_SIZE = int(os.getenv("BH_BATCH_SIZE", "32"))
 EPOCHS = int(os.getenv("BH_EPOCHS", "5"))
 LEARNING_RATE = 0.001
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = (
+_default_data_dir = (
     ROOT / "CodeXGLUE" / "Code-Code"
     / "Defect-detection" / "dataset"
 )
+_alt_data_dir = ROOT.parent / "datasets" / "codexglue"
+DATA_DIR = _default_data_dir if (_default_data_dir / "train.jsonl").exists() else _alt_data_dir
 
 # If the official preprocessing places the files elsewhere,
 # update DATA_DIR to the directory containing the JSONL splits.

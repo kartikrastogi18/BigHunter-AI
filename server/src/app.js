@@ -7,6 +7,7 @@ const repositoryRoutes = require("./routes/repository.routes");
 const searchRoutes =
     require("./routes/search.routes");
 const bugRoutes = require("./routes/bug.routes");
+const githubRoutes = require("./routes/github.routes");
 
 const app = express();
 
@@ -21,6 +22,10 @@ app.use(
 app.use(
     "/api/bugs",
     bugRoutes
+);
+app.use(
+    "/api/github",
+    githubRoutes
 );
 
 app.get("/api/health", (req, res) => {

@@ -17,6 +17,9 @@ const {
 const Repository =
     require("../models/repository.model");
 
+const CodeChunk =
+    require("../models/code-chunk.model");
+
 const { embedRepository } = require("../services/embedding-pipeline.service");
 
 
@@ -274,8 +277,70 @@ async function analyzeRepositoryController(
     }
 }
 
+/**
+ * Lists all indexed repositories.
+ */
+async function getAllRepositoriesController(req, res) {
+    try {
+        const repositories = await Repository.findAll({
+            order: [["created_at", "DESC"]]
+        });
+
+        return res.json({
+            success: true,
+            repositories
+        });
+    } catch (error) {
+        console.error("❌ Failed to fetch repositories:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch repositories",
+            error: error.message
+        });
+    }
+}
+
+/**
+ * Deletes a repository and all its associated indexed code chunks.
+ */
+async function deleteRepositoryController(req, res) {
+    try {
+        const { id } = req.params;
+
+        const repository = await Repository.findByPk(id);
+        if (!repository) {
+            return res.status(404).json({
+                success: false,
+                message: "Repository not found"
+            });
+        }
+
+        // Delete associated chunks
+        const deletedChunks = await CodeChunk.destroy({
+            where: { repositoryId: id }
+        });
+
+        // Delete repository
+        await repository.destroy();
+
+        console.log(`🗑️ Deleted repository ${repository.name} (${id}) and ${deletedChunks} chunks`);
+
+        return res.json({
+            success: true,
+            message: `Repository '${repository.name}' and ${deletedChunks} indexed code chunks deleted successfully.`
+        });
+    } catch (error) {
+        console.error("❌ Failed to delete repository:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to delete repository",
+            error: error.message
+        });
+    }
+}
 
 module.exports = {
-    analyzeRepository:
-        analyzeRepositoryController
+    analyzeRepository: analyzeRepositoryController,
+    getAllRepositories: getAllRepositoriesController,
+    deleteRepository: deleteRepositoryController
 };

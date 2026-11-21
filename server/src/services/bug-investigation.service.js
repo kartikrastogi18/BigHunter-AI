@@ -117,7 +117,8 @@ async function generatePatch({ code, issueDescription, language }) {
 
     return {
         success: true,
-        patch: data.patch
+        patch: data.patch,
+        cleanCode: data.cleanCode || null
     };
 }
 
@@ -163,12 +164,52 @@ async function generateReproductionTest({ repositoryId, code, issueDescription, 
 
     return {
         success: true,
-        test: data.test
+        test: data.test,
+        cleanTest: data.cleanTest || null,
+        testFileName: data.testFileName || null
     };
+}
+
+/**
+ * Runs CodeXGLUE PyTorch Bi-GRU defect detection inference on source code.
+ */
+async function detectDefect({ code }) {
+    if (!code || !code.trim()) {
+        throw new Error("Code snippet is required for defect detection.");
+    }
+
+    const response = await fetch(`${AI_SERVICE_URL}/detect-defect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+        signal: AbortSignal.timeout(30000)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`ML defect detection failed: ${response.status} ${errorText}`);
+    }
+
+    return await response.json();
+}
+
+/**
+ * Fetches metadata & benchmark evaluation metrics for the PyTorch defect detector.
+ */
+async function getDefectModelInfo() {
+    const response = await fetch(`${AI_SERVICE_URL}/defect-model-info`, {
+        signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to fetch defect model info: ${response.status}`);
+    }
+    return await response.json();
 }
 
 module.exports = {
     investigateBug,
     generatePatch,
-    generateReproductionTest
+    generateReproductionTest,
+    detectDefect,
+    getDefectModelInfo
 };
